@@ -5,10 +5,12 @@ from obspy.core.trace import Trace
 from obspy.core.stream import Stream
 from obspy.core.inventory.inventory import Inventory
 import warnings
+import argparse
 
 ARC_CLIENT = 'http://service.geonet.org.nz'
 NRT_CLIENT = 'http://service-nrt.geonet.org.nz'
 MAX_STATIONS = 30
+MAX_RADIUS_DEFAULT = 0.1
 
 station_limit_disabled = False
 client = Client(NRT_CLIENT)
@@ -42,7 +44,7 @@ def get_waveforms_for_time(lat, lng, starttime, endtime, channel, maxradius, loc
     station_count = sum([len(nw) for nw in inv])
     if station_count > MAX_STATIONS and not station_limit_disabled:
         raise RuntimeError(
-            f'Failing because station count exceeded maximum of {MAX_STATIONS}. Disable station count limit to ignore this')
+            f'Failing because station count exceeded maximum of {MAX_STATIONS} (was {station_count}). Disable station count limit to ignore this')
 
     st = Stream()
     station_info = ''
@@ -58,9 +60,9 @@ def get_waveforms_for_time(lat, lng, starttime, endtime, channel, maxradius, loc
     return st
 
 
-def get_waveforms_for_event(eventid: str, begin_off=10, end_off=60, channel='HNZ', maxradius=0.1, station=None) -> Stream:
+def get_waveforms_for_event(eventid: str, begin_off=10, end_off=60, channel='HNZ', maxradius=MAX_RADIUS_DEFAULT, station=None) -> Stream:
     """
-    Get waveforms for an event within a given radius (default 0.1), and on any
+    Get waveforms for an event within a given radius (default MAX_RADIUS_DEFAULT), and on any
     given channels. 
 
     Behaves the same as get_waveforms_for_time in terms of maxradius/station
@@ -79,5 +81,79 @@ def get_waveforms_for_event(eventid: str, begin_off=10, end_off=60, channel='HNZ
     return get_waveforms_for_time(origin.latitude, origin.longitude,
                                   otime - begin_off, otime + end_off, channel, maxradius=maxradius, station=station)
 
+def none_default(value, default):
+    """
+    Return a default value if value is None, otherwise return the given value
+    """
+    if value is not None:
+        return value
+    else:
+        return default
 
-get_waveforms_for_event('2021p001797').plot()
+parser = argparse.ArgumentParser(description='GeoNet CLI')
+
+parser.add_argument('action', type=str, choices=['save-waveform', 'plot'], help='What to do')
+
+# Selection type, either we select what waveforms to save/view based on time
+# or a given event ID.
+
+seltype = parser.add_subparsers(help='Selection Type', required=True, dest='selection_type')
+
+# Event based parsing logic
+event_parser = seltype.add_parser('event', help='Event based')
+event_parser.add_argument(metavar='id', dest='event_id', type=str, help='Event ID, e.g. 2021p001797')
+mx_grp = event_parser.add_mutually_exclusive_group()
+mx_grp.add_argument('--max-radius', '-r', metavar='R', type=float, help='Maximum radius')
+mx_grp.add_argument('--station', '-s', type=str, help='Station(s) to use, comma separate multiple stations')
+
+# Time based parsing logic
+time_parser = seltype.add_parser('time', help='Datetime based')
+time_parser.add_argument('datetime', type=UTCDateTime, help='The date and time of the event, e.g. 2021-01-01T15:57:51Z')
+
+loc_type = time_parser.add_subparsers(help='Location type', required=True, dest='loc_type')
+
+loc_parser = loc_type.add_parser('at', help='Location based')
+loc_parser.add_argument('lat', type=str, help='Latitude')
+loc_parser.add_argument('lng', type=str, help='Longitude')
+loc_parser.add_argument('--max-radius', '-r', metavar='R', type=float, help='Maximum radius', default=MAX_RADIUS_DEFAULT)
+
+stn_parser = loc_type.add_parser('stn', help='Station based')
+stn_parser.add_argument('station', type=str)
+
+parser.add_argument('--begin-offset', '-b', type=float, help='Beginning offset in seconds from event start', default=10)
+parser.add_argument('--end-offset', '-e', type=float, help='End offset in seconds from event start', default=60)
+parser.add_argument('--channel', '-c', type=str, help='Channel(s) to use, comma separate multiple channels. Use ? as a wildcard', default='HNZ')
+
+parser.add_argument('--ignore-max-stations', action='store_true', default=False, help='(Dangerous!) Ignore the max station limit')
+
+args = parser.parse_args()
+
+station_limit_disabled = args.ignore_max_stations
+
+stream = None
+if args.selection_type == 'event':
+    stream = get_waveforms_for_event(
+        args.event_id,
+        args.begin_offset,
+        args.end_offset,
+        args.channel,
+        args.max_radius if args.station is None else None,
+        args.station
+    )
+elif args.selection_type == 'time':
+    stream = get_waveforms_for_time(
+        args.lat,
+        args.lng,
+        args.datetime - args.begin_offset,
+        args.datetime + args.end_offset,
+        args.channel,
+        args.max_radius,
+        station=args.station
+    )
+
+
+if args.action == 'save-waveform':
+    for trace in stream:
+        trace.write(trace.id + '.wav', format='WAV')
+elif args.action == 'plot':
+    stream.plot()
