@@ -257,6 +257,6 @@ elif args.action == 'plot':
     if args.plot_type == 'relative':
         stream.plot(type='relative', reftime=time)
     elif args.plot_type == 'section':
-        stream.plot(type='section', norm_method='stream', time_down=True, reftime=time)
+        stream.plot(type='section', time_down=True, reftime=time)
 elif args.action == 'save-stream':
     stream.write(stream[0].id + '.' + args.format.lower(), format=args.format)
