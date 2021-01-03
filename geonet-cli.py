@@ -195,6 +195,13 @@ plot = action.add_parser('plot', help='Plot waveforms')
 plot.add_argument('--type', '-t', dest='plot_type', type=str, choices=['relative', 'section'], default='relative', help='Type of plot')
 build_parser_common(plot)
 
+save_stream = action.add_parser('save-stream', help='Save the stream')
+save_stream.add_argument('--format', '-f', type=str, choices=['AH', 'GSE2', 'MSEED', 'PICKLE', 'Q', 'SAC', 'SACXY',
+                                                    'SEGY', 'SH_ASC', 'SLIST', 'SU', 'TSPAIR', 'WAV'], 
+                         default='MSEED', help='Output file format')
+save_stream.add_argument('filename', type=str, help='Output filename')
+build_parser_common(save_stream)
+
 args = parser.parse_args()
 
 station_limit_disabled = args.ignore_max_stations
@@ -250,3 +257,5 @@ elif args.action == 'plot':
         stream.plot(type='relative', reftime=time)
     elif args.plot_type == 'section':
         stream.plot(type='section', norm_method='stream', time_down=True, reftime=time)
+elif args.action == 'save-stream':
+    stream.write(stream[0].id + '.' + args.format.lower(), format=args.format)
