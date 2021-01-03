@@ -22,7 +22,7 @@ def lat_lng_dist(coord1: tuple, coord2: tuple) -> float:
     Gets the distance between two sets of coordinates. Coordinates should be
     tuples in the format (lat, lng)
     """
-    # I'm not desperate enough to do a bynch of maths when there's a lovely
+    # I'm not desperate enough to do a bunch of maths when there's a lovely
     # answer on SO already:
     # https://stackoverflow.com/questions/19412462/getting-distance-between-two-points-based-on-latitude-longitude
 
@@ -142,7 +142,7 @@ def build_parser_common(parser):
         metavar='id', dest='event_id', type=str, help='Event ID, e.g. 2021p001797')
     mx_grp = event_parser.add_mutually_exclusive_group()
     mx_grp.add_argument('--max-radius', '-r', metavar='R',
-                        type=float, help='Maximum radius')
+                        type=float, help='Maximum radius', default=MAX_RADIUS_DEFAULT)
     mx_grp.add_argument('--station', '-s', type=str,
                         help='Station(s) to use, comma separate multiple stations')
 
@@ -248,8 +248,9 @@ if args.action == 'save-waveform':
     else:
         dir_prefix = '' if args.out_dir is None else args.out_dir + '/'
 
-    os.mkdir(dir_prefix)
+    os.makedirs(dir_prefix, exist_ok=True)
     for trace in stream:
+        print(trace)
         trace.write(dir_prefix + trace.id + '.' +
                     args.format, format=args.format.upper())
 elif args.action == 'plot':
