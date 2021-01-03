@@ -81,15 +81,6 @@ def get_waveforms_for_event(eventid: str, begin_off=10, end_off=60, channel='HNZ
     return get_waveforms_for_time(origin.latitude, origin.longitude,
                                   otime - begin_off, otime + end_off, channel, maxradius=maxradius, station=station)
 
-def none_default(value, default):
-    """
-    Return a default value if value is None, otherwise return the given value
-    """
-    if value is not None:
-        return value
-    else:
-        return default
-
 parser = argparse.ArgumentParser(description='GeoNet CLI')
 
 parser.add_argument('action', type=str, choices=['save-waveform', 'plot'], help='What to do')
