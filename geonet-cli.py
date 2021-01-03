@@ -6,6 +6,7 @@ from obspy.core.stream import Stream
 from obspy.core.inventory.inventory import Inventory
 import warnings
 import argparse
+import os
 
 ARC_CLIENT = 'http://service.geonet.org.nz'
 NRT_CLIENT = 'http://service-nrt.geonet.org.nz'
@@ -81,41 +82,55 @@ def get_waveforms_for_event(eventid: str, begin_off=10, end_off=60, channel='HNZ
     return get_waveforms_for_time(origin.latitude, origin.longitude,
                                   otime - begin_off, otime + end_off, channel, maxradius=maxradius, station=station)
 
+def build_parser_common(parser):
+    # Selection type, either we select what waveforms to save/view based on time
+    # or a given event ID.
+
+    seltype = parser.add_subparsers(help='Selection Type', required=True, dest='selection_type')
+
+    # Event based parsing logic
+    event_parser = seltype.add_parser('event', help='Event based')
+    event_parser.add_argument(metavar='id', dest='event_id', type=str, help='Event ID, e.g. 2021p001797')
+    mx_grp = event_parser.add_mutually_exclusive_group()
+    mx_grp.add_argument('--max-radius', '-r', metavar='R', type=float, help='Maximum radius')
+    mx_grp.add_argument('--station', '-s', type=str, help='Station(s) to use, comma separate multiple stations')
+
+    # Time based parsing logic
+    time_parser = seltype.add_parser('time', help='Datetime based')
+    time_parser.add_argument('datetime', type=UTCDateTime, help='The date and time of the event, e.g. 2021-01-01T15:57:51Z')
+
+    loc_type = time_parser.add_subparsers(help='Location type', required=True, dest='loc_type')
+
+    loc_parser = loc_type.add_parser('at', help='Location based')
+    loc_parser.add_argument('lat', type=str, help='Latitude')
+    loc_parser.add_argument('lng', type=str, help='Longitude')
+    loc_parser.add_argument('--max-radius', '-r', metavar='R', type=float, help='Maximum radius', default=MAX_RADIUS_DEFAULT)
+
+    stn_parser = loc_type.add_parser('stn', help='Station based')
+    stn_parser.add_argument('station', type=str)
+
+    parser.add_argument('--begin-offset', '-b', type=float, help='Beginning offset in seconds from event start', default=10)
+    parser.add_argument('--end-offset', '-e', type=float, help='End offset in seconds from event start', default=60)
+    parser.add_argument('--channel', '-c', type=str, help='Channel(s) to use, comma separate multiple channels. Use ? as a wildcard', default='HNZ')
+
+    parser.add_argument('--ignore-max-stations', action='store_true', default=False, help='(Dangerous!) Ignore the max station limit')
+
 parser = argparse.ArgumentParser(description='GeoNet CLI')
 
-parser.add_argument('action', type=str, choices=['save-waveform', 'plot'], help='What to do')
+action = parser.add_subparsers(help='Action', required=True, dest='action')
 
-# Selection type, either we select what waveforms to save/view based on time
-# or a given event ID.
+save_waveform = action.add_parser('save-waveform', help='Save a waveform')
 
-seltype = parser.add_subparsers(help='Selection Type', required=True, dest='selection_type')
+save_waveform.add_argument('--format', '-f', type=str, choices=['wav', 'mseed'], default='wav', help='Output file format')
 
-# Event based parsing logic
-event_parser = seltype.add_parser('event', help='Event based')
-event_parser.add_argument(metavar='id', dest='event_id', type=str, help='Event ID, e.g. 2021p001797')
-mx_grp = event_parser.add_mutually_exclusive_group()
-mx_grp.add_argument('--max-radius', '-r', metavar='R', type=float, help='Maximum radius')
-mx_grp.add_argument('--station', '-s', type=str, help='Station(s) to use, comma separate multiple stations')
+out_mxgrp = save_waveform.add_mutually_exclusive_group()
+out_mxgrp.add_argument('--out-dir', '-o', type=str, help='Output directory (created if non-existent)')
+out_mxgrp.add_argument('--auto-name', '-a', action='store_true', default=False, help='Automatically create a directory from time or event name')
+build_parser_common(save_waveform)
 
-# Time based parsing logic
-time_parser = seltype.add_parser('time', help='Datetime based')
-time_parser.add_argument('datetime', type=UTCDateTime, help='The date and time of the event, e.g. 2021-01-01T15:57:51Z')
 
-loc_type = time_parser.add_subparsers(help='Location type', required=True, dest='loc_type')
-
-loc_parser = loc_type.add_parser('at', help='Location based')
-loc_parser.add_argument('lat', type=str, help='Latitude')
-loc_parser.add_argument('lng', type=str, help='Longitude')
-loc_parser.add_argument('--max-radius', '-r', metavar='R', type=float, help='Maximum radius', default=MAX_RADIUS_DEFAULT)
-
-stn_parser = loc_type.add_parser('stn', help='Station based')
-stn_parser.add_argument('station', type=str)
-
-parser.add_argument('--begin-offset', '-b', type=float, help='Beginning offset in seconds from event start', default=10)
-parser.add_argument('--end-offset', '-e', type=float, help='End offset in seconds from event start', default=60)
-parser.add_argument('--channel', '-c', type=str, help='Channel(s) to use, comma separate multiple channels. Use ? as a wildcard', default='HNZ')
-
-parser.add_argument('--ignore-max-stations', action='store_true', default=False, help='(Dangerous!) Ignore the max station limit')
+plot = action.add_parser('plot', help='Plot waveforms')
+build_parser_common(plot)
 
 args = parser.parse_args()
 
@@ -144,7 +159,14 @@ elif args.selection_type == 'time':
 
 
 if args.action == 'save-waveform':
+    if args.auto_name:
+        dir_prefix = 'EV-' + args.event_id if args.selection_type == 'event' else 'EV-' + args.datetime
+        dir_prefix += '/'
+    else:
+        dir_prefix = '' if args.out_dir is None else args.out_dir + '/'
+
+    os.mkdir(dir_prefix)
     for trace in stream:
-        trace.write(trace.id + '.wav', format='WAV')
+        trace.write(dir_prefix + trace.id + '.' + args.format, format=args.format.upper())
 elif args.action == 'plot':
     stream.plot()
