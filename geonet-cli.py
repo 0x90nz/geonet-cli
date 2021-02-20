@@ -15,7 +15,25 @@ MAX_STATIONS = 30
 MAX_RADIUS_DEFAULT = 0.1
 
 station_limit_disabled = False
-client = Client(NRT_CLIENT)
+
+# This client is used for looking up events, retrieving catalogs etc. Would be
+# better to use a time based decision to choose a client, but that'd be more
+# work :)
+default_client = Client(NRT_CLIENT)
+
+def try_get_waveforms(*args, **kwargs):
+    """
+    Tries to get a waveform from the NRT client and then if this fails falls
+    back to the ARC client. Proxies any arguments or keyword arguments through
+    to `get_waveforms` on the appropriate `Client` object
+    """
+    try:
+        client = Client(NRT_CLIENT)
+        return client.get_waveforms(*args, **kwargs)
+    except Exception as ex:
+        client = Client(ARC_CLIENT)
+        return client.get_waveforms(*args, **kwargs)
+
 
 def lat_lng_dist(coord1: tuple, coord2: tuple) -> float:
     """
@@ -61,7 +79,7 @@ def get_waveforms_for_time(lat, lng, starttime, endtime, channel, maxradius, loc
     # throws a fit when it sees this. Just ignore it
     with warnings.catch_warnings():
         warnings.simplefilter('ignore')
-        inv: Inventory = client.get_stations(latitude=lat, longitude=lng, maxradius=maxradius,
+        inv: Inventory = default_client.get_stations(latitude=lat, longitude=lng, maxradius=maxradius,
                                              channel=channel, level='channel', starttime=starttime, endtime=endtime, station=station)
 
     # We want to be nice to GeoNet. If we're requesting >30 stations it's likely
@@ -78,14 +96,14 @@ def get_waveforms_for_time(lat, lng, starttime, endtime, channel, maxradius, loc
     for nw in inv:
         for station in nw:
             try:
-                waveforms = client.get_waveforms(nw.code, station.code,
+                waveforms = try_get_waveforms(nw.code, station.code,
                                                  location, channel, starttime, endtime)
 
                 # Required for section plot. Has no ill effect on other plots so
                 # we just calculate it for everything. If we don't have a lat
                 # and lng it doesn't make sense to calculate a distance so we
-                # just set it to 0. 
-                # 
+                # just set it to 0.
+                #
                 # TODO: replace this with disallowing section plot for stn selection?
                 if lat is not None and lng is not None:
                     for trace in waveforms:
@@ -108,7 +126,7 @@ def get_waveforms_for_time(lat, lng, starttime, endtime, channel, maxradius, loc
 def get_waveforms_for_event(eventid: str, begin_off=10, end_off=60, channel='HNZ', maxradius=MAX_RADIUS_DEFAULT, station=None) -> tuple:
     """
     Get waveforms for an event within a given radius (default MAX_RADIUS_DEFAULT), and on any
-    given channels. 
+    given channels.
 
     Behaves the same as get_waveforms_for_time in terms of maxradius/station
     (e.g. set either of them but not both unless you know what you're doing. the
@@ -116,7 +134,7 @@ def get_waveforms_for_event(eventid: str, begin_off=10, end_off=60, channel='HNZ
 
     Returns a tuple of Stream, Event
     """
-    cat = client.get_events(eventid=eventid)
+    cat = default_client.get_events(eventid=eventid)
 
     # Should have one and only one event associated with a given eventid
     assert len(cat) == 1, 'Length of returned catalog for event should be 1'
