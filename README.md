@@ -136,3 +136,18 @@ for use in another program.
 
 The default format is `MSEED` but this can be changed with the `--format` (short
 form `-f`) argument.
+
+## Examples
+
+Save the Z component of all strong motion sensors (high broad band and extremely
+short-period) within 1 degree of the epicentre of event 2021p001797.
+
+```
+python geonet-cli.py save-waveform -a -c 'EHZ,HHZ' event 2021p001797 -r 1
+```
+
+Plot the traces as above, on a section plot:
+
+```
+python geonet-cli.py plot -t section -c 'EHZ,HHZ' event 2021p001797 -r 1
+```
